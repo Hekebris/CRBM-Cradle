@@ -1,96 +1,57 @@
 from datasetManager import DatasetManager
-from crbmConvolutionalLayer import CRBMConvolutionalLayer
+from deepBeliefNetwork import DeepBeliefNetwork
 import torch
 import matplotlib.pyplot as plt
+import numpy as np
+
+def show_images(imgs, title):
+    # funcion pa mostrar las imagenes
+    fig, axes = plt.subplots(1, len(imgs), figsize=(15, 5))
+    for i, ax in enumerate(axes):
+        # convertimos el tensor a numpy
+        img_np = imgs[i].detach().permute(1, 2, 0).cpu().numpy()
+
+        img_np = np.clip(img_np, 0, 1)
+        # si es RGB lo mostramos normal, si no en escala de grises
+        if img_np.shape[-1] == 3:
+            ax.imshow(img_np)
+        else:
+            ax.imshow(img_np, cmap='gray')
+        ax.axis('off')
+    plt.suptitle(title)
+    plt.show()
+
+# vemos si tenemos GPU
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 if __name__ == "__main__":
-    dataset_manager = DatasetManager(dataset_path="./test", batch_size=64)
+    # cargamos el dataset
+    dataset_manager = DatasetManager(dataset_path="./test", batch_size=32)
     data_loader = dataset_manager.dataset
 
-    crbm_layer = CRBMConvolutionalLayer(
+    # creamos la red
+    dbn = DeepBeliefNetwork(
         in_channels=3,
-        out_channels=5,
-        kernel_size=2,
-        pool_size=2,
+        layer_sizes=[32, 64, 128],  # 3 capas con mas features cada vez
+        kernel_size=5
+    ).to(device)
+
+    # entrenamos todo gracias chat gpt
+    print("empezando el entrenamiento...")
+    dbn.train_all_layers(
+        data_loader=data_loader,
+        num_epochs=50,
+        lr=0.01,
+        device=device
     )
+    print("listo el entrenamiento!")
 
-    crbm_layer2 = CRBMConvolutionalLayer(
-        in_channels=5,
-        out_channels=10,
-        kernel_size=2,
-        pool_size=2,
-    )
-
-    crbm_layer3 = CRBMConvolutionalLayer(
-        in_channels=10,
-        out_channels=20,
-        kernel_size=2,
-        pool_size=2,
-    )
-
-    crbm_layer4 = CRBMConvolutionalLayer(
-        in_channels=20,
-        out_channels=40,
-        kernel_size=2,
-        pool_size=2,
-    )
-
-    for images, labels in data_loader:
-        ####CONV LAYER 1####
-        output = crbm_layer(images)
-
-        print("Shape del output:", output.shape)
-
-        output = torch.clamp(output, 0, 1)
-
-        filters = output[0].detach().cpu().numpy()
-
-        fig, axes = plt.subplots(1, 5, figsize=(15, 5))
-        for i in range(5):
-            axes[i].imshow(filters[i])
-            axes[i].axis("off")
-        plt.show()
-
-        ####CONV LAYER 2####
-        output = crbm_layer2(output)
-        print("Shape del output:", output.shape)
-
-        output = torch.clamp(output, 0, 1)
-
-        filters = output[0].detach().cpu().numpy()
-
-        fig, axes = plt.subplots(1, 10, figsize=(15, 5))
-        for i in range(10):
-            axes[i].imshow(filters[i])
-            axes[i].axis("off")
-        plt.show()
-
-        ####CONV LAYER 3####
-        output = crbm_layer3(output)
-        print("Shape del output:", output.shape)
-
-        output = torch.clamp(output, 0, 1)
-
-        filters = output[0].detach().cpu().numpy()
-
-        fig, axes = plt.subplots(1, 20, figsize=(15, 5))
-        for i in range(20):
-            axes[i].imshow(filters[i])
-            axes[i].axis("off")
-        plt.show()
-
-        ####CONV LAYER 4####
-        output = crbm_layer4(output)
-        print("Shape del output:", output.shape)
-
-        output = torch.clamp(output, 0, 1)
-
-        filters = output[0].detach().cpu().numpy()
-
-        fig, axes = plt.subplots(1, 40, figsize=(15, 5))
-        for i in range(40):
-            axes[i].imshow(filters[i])
-            axes[i].axis("off")
-        plt.show()
-
-        break
+    # mostramos los resultados finales
+    batch, _ = next(iter(data_loader))
+    batch = batch.to(device)
+    original_batch = batch.clone()
+    batch = batch / 255.0  # normalizamos
+    h_prob, h_sample = dbn.sample_h(batch)
+    v_prob, v_sample = dbn.sample_v(h_sample)
+    show_images(original_batch / 255.0, "Originales - Final")
+    show_images(v_prob, "Reconstruidas - Final")
